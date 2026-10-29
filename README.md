@@ -58,13 +58,22 @@ any observations, it will tell you which origins to send.
 
 - **Decides the policy** from a set of recorded `(request origin → response headers)`
   observations, supplied either in a small JSON format or as a HAR file.
-- **Applies the Fetch CORS check** step for step, including the two consequences
-  people get wrong: `*` never satisfies a credentialed request, and
-  `Access-Control-Allow-Credentials` is compared against the byte string `true`,
-  so `True` does nothing.
-- **Compares parsed origins**, never strings. Scheme, host and port are compared
-  as a triple through the WHATWG `URL` parser, so the tool does not reproduce
-  the bug it is looking for.
+- **Applies the Fetch CORS check** step for step, including the three
+  consequences people get wrong: `*` never satisfies a credentialed request;
+  `Access-Control-Allow-Credentials` is compared against the byte string
+  `true`, so `True` does nothing and a header sent twice does nothing either,
+  because Fetch combines it into `true, false`; and step 3 is a *byte*
+  comparison, so `https://evil.invalid:443` does not match the origin
+  `https://evil.invalid` and the endpoint is closed. CM015 reports the value;
+  it is not graded as an accepted origin, and no proof-of-concept page is
+  generated for it, because none would work.
+- **Parses origins rather than pattern-matching them** when deciding what a host
+  *is*. Scheme, host and port come through the WHATWG `URL` parser, so the tool
+  does not reproduce the bug it is looking for: a single trailing root dot is
+  normalised away, because `app.acme.example.` and `app.acme.example` are the
+  same host and treating them as different ones made the defender's own host
+  read as a prefix of itself. Where the standard says to compare bytes — step 3
+  — bytes are compared.
 - **Grades on credentials.** Almost every CORS misconfiguration is harmless
   without them, and the difference between a report that lands and one that gets
   closed is usually this distinction.
@@ -614,7 +623,7 @@ npm run build
 npm test              # builds, then runs node --test over dist/test
 ```
 
-The test suite is 183 tests in eight files, run with `node --test`. CI runs it
+The test suite is 190 tests in eight files, run with `node --test`. CI runs it
 on Node 20, 22 and 24, then asserts the exit codes and the example captures
 from the command line — including that the vulnerable example is reported and
 the correctly configured one comes back clean.
