@@ -10,7 +10,7 @@
 
 ---
 
-## Why this bug class exists
+## A CORS policy is a function, not a config file
 
 A server does not have a CORS policy in any form you can read off a config
 file. What it has is a function. For each request it decides, from the `Origin`
