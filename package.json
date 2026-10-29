@@ -1,0 +1,57 @@
+{
+  "name": "cors-matrix",
+  "version": "0.1.0",
+  "description": "Offline CORS policy analyser: decide what a policy actually is from recorded (origin -> response headers) observations, and report what is exploitable.",
+  "license": "MIT",
+  "author": "David Nichols",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "cors-matrix": "dist/src/cli.js"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist/src",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "cors",
+    "appsec",
+    "security",
+    "origin",
+    "same-origin-policy",
+    "har",
+    "pentest",
+    "bug-bounty",
+    "offline"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Young-Syre/cors-matrix.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Young-Syre/cors-matrix/issues"
+  },
+  "homepage": "https://github.com/Young-Syre/cors-matrix#readme",
+  "scripts": {
+    "build": "tsc --build --force",
+    "clean": "rm -rf dist",
+    "prepare": "npm run build",
+    "test": "npm run build && node --test \"dist/test/*.test.js\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}

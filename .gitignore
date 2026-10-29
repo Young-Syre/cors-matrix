@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+.DS_Store
+.env
+.env.*
+
+# Never commit real captures: a capture recorded against a live target
+# contains that target's name and, in HAR form, live session cookies.
+*.har
+!examples/*.har
+!test/fixtures/*.har
