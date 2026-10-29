@@ -47,7 +47,7 @@
     "build": "tsc --build --force",
     "clean": "rm -rf dist",
     "prepare": "npm run build",
-    "test": "npm run build && node --test \"dist/test/*.test.js\"",
+    "test": "npm run build && node --test dist/test/*.test.js",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

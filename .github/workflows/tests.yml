@@ -37,7 +37,7 @@ jobs:
         run: npm run build
 
       - name: Unit tests
-        run: node --test "dist/test/*.test.js"
+        run: node --test dist/test/*.test.js
 
       - name: No runtime dependencies
         run: |
