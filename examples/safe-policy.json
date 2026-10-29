@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "resource": "https://api.northwind-labs.example/v1/account",
+  "description": "A correctly configured policy: an exact allowlist of one origin, credentials allowed for it only, Vary: Origin set, and every probe outside the allowlist answered with no CORS headers at all.",
+  "trustedOrigins": ["https://app.northwind-labs.example"],
+  "authenticated": true,
+  "observations": [
+    {
+      "requestOrigin": "https://app.northwind-labs.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "https://app.northwind-labs.example",
+        "access-control-allow-credentials": "true",
+        "vary": "Origin"
+      },
+      "note": "baseline: the one allowed origin"
+    },
+    {
+      "requestOrigin": "https://app.northwind-labs.example",
+      "method": "OPTIONS",
+      "status": 204,
+      "requestHeaders": {
+        "Access-Control-Request-Method": "PUT",
+        "Access-Control-Request-Headers": "authorization,content-type"
+      },
+      "responseHeaders": {
+        "access-control-allow-origin": "https://app.northwind-labs.example",
+        "access-control-allow-credentials": "true",
+        "access-control-allow-methods": "GET, POST, PUT",
+        "access-control-allow-headers": "content-type, authorization",
+        "access-control-max-age": "600",
+        "vary": "Origin"
+      },
+      "note": "pre-flight for the allowed origin; agrees with the actual response"
+    },
+    {
+      "requestOrigin": "https://probe.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": { "content-type": "application/json", "vary": "Origin" },
+      "note": "reflection probe: no CORS headers returned"
+    },
+    {
+      "requestOrigin": "null",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": { "content-type": "application/json", "vary": "Origin" },
+      "note": "null origin probe"
+    },
+    {
+      "requestOrigin": "https://notnorthwind-labs.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": { "content-type": "application/json", "vary": "Origin" },
+      "note": "suffix probe: endsWith would accept this"
+    },
+    {
+      "requestOrigin": "https://northwind-labs.example.probe.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": { "content-type": "application/json", "vary": "Origin" },
+      "note": "prefix probe: startsWith would accept this"
+    },
+    {
+      "requestOrigin": "https://probe.northwind-labs.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": { "content-type": "application/json", "vary": "Origin" },
+      "note": "subdomain probe: this policy does not wildcard subdomains"
+    },
+    {
+      "requestOrigin": "http://app.northwind-labs.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": { "content-type": "application/json", "vary": "Origin" },
+      "note": "scheme downgrade probe"
+    },
+    {
+      "requestOrigin": "https://app.northwind-labs.example:1337",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": { "content-type": "application/json", "vary": "Origin" },
+      "note": "port probe"
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "resource": "https://api.kestrel-pay.example/v1/balance",
+  "description": "The subtle case. This policy looks correct: it rejects an unrelated origin, rejects the null origin, rejects the prefix probe, and sets Vary: Origin. The check behind it is hostname.endsWith('kestrel-pay.example'), so it also accepts notkestrel-pay.example — a domain anyone can register.",
+  "trustedOrigins": ["https://app.kestrel-pay.example"],
+  "authenticated": true,
+  "observations": [
+    {
+      "requestOrigin": "https://app.kestrel-pay.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "https://app.kestrel-pay.example",
+        "access-control-allow-credentials": "true",
+        "vary": "Origin"
+      },
+      "note": "baseline"
+    },
+    {
+      "requestOrigin": "https://probe.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": { "content-type": "application/json", "vary": "Origin" },
+      "note": "unrelated origin correctly rejected, which is what makes this easy to miss"
+    },
+    {
+      "requestOrigin": "null",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": { "content-type": "application/json", "vary": "Origin" },
+      "note": "null origin correctly rejected"
+    },
+    {
+      "requestOrigin": "https://kestrel-pay.example.probe.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": { "content-type": "application/json", "vary": "Origin" },
+      "note": "prefix probe correctly rejected"
+    },
+    {
+      "requestOrigin": "https://notkestrel-pay.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "https://notkestrel-pay.example",
+        "access-control-allow-credentials": "true",
+        "vary": "Origin"
+      },
+      "note": "the bug: ends with the trusted domain, but not on a label boundary"
+    },
+    {
+      "requestOrigin": "https://checkout.kestrel-pay.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "https://checkout.kestrel-pay.example",
+        "access-control-allow-credentials": "true",
+        "vary": "Origin"
+      },
+      "note": "any subdomain is accepted: deliberate, but it is a dependency on every host under the domain"
+    },
+    {
+      "requestOrigin": "https://app.kestrel-pay.example:1337",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "https://app.kestrel-pay.example:1337",
+        "access-control-allow-credentials": "true",
+        "vary": "Origin"
+      },
+      "note": "the check reads new URL(origin).hostname, so the port is discarded"
+    },
+    {
+      "requestOrigin": "http://app.kestrel-pay.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": { "content-type": "application/json", "vary": "Origin" },
+      "note": "the scheme IS checked here, so no downgrade"
+    }
+  ]
+}

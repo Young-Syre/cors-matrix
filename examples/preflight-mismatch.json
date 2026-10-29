@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "resource": "https://api.saltmarsh-cdn.example/v1/session",
+  "description": "A gateway answers OPTIONS and the application answers GET, and the two disagree. The pre-flight reflects any origin with credentials; the real response does not. A tester who probed with OPTIONS alone would report a critical that does not reproduce.",
+  "trustedOrigins": ["https://console.saltmarsh-cdn.example"],
+  "authenticated": true,
+  "observations": [
+    {
+      "requestOrigin": "https://probe.example",
+      "method": "OPTIONS",
+      "status": 204,
+      "requestHeaders": {
+        "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "authorization"
+      },
+      "responseHeaders": {
+        "access-control-allow-origin": "https://probe.example",
+        "access-control-allow-credentials": "true",
+        "access-control-allow-methods": "GET, POST, PUT, DELETE",
+        "access-control-allow-headers": "authorization, content-type",
+        "vary": "Origin"
+      },
+      "note": "the gateway reflects and allows credentials"
+    },
+    {
+      "requestOrigin": "https://probe.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": { "content-type": "application/json", "vary": "Origin" },
+      "note": "the application returns no CORS headers at all, so the browser discards the response"
+    },
+    {
+      "requestOrigin": "https://console.saltmarsh-cdn.example",
+      "method": "OPTIONS",
+      "status": 204,
+      "requestHeaders": { "Access-Control-Request-Method": "GET" },
+      "responseHeaders": {
+        "access-control-allow-origin": "https://console.saltmarsh-cdn.example",
+        "access-control-allow-credentials": "true",
+        "access-control-allow-methods": "GET, POST, PUT, DELETE",
+        "vary": "Origin"
+      }
+    },
+    {
+      "requestOrigin": "https://console.saltmarsh-cdn.example",
+      "method": "GET",
+      "status": 200,
+      "requestHeaders": { "Cookie": "sid=synthetic" },
+      "responseHeaders": {
+        "content-type": "application/json",
+        "access-control-allow-origin": "https://console.saltmarsh-cdn.example",
+        "access-control-allow-credentials": "True",
+        "vary": "Origin"
+      },
+      "note": "and the application spells the credentials header True, which Fetch does not honour"
+    }
+  ]
+}

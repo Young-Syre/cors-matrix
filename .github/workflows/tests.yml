@@ -1,0 +1,131 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # There are no runtime dependencies. `npm ci` installs TypeScript and
+      # the node type definitions, and nothing else.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit tests
+        run: node --test "dist/test/*.test.js"
+
+      - name: No runtime dependencies
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            const deps = Object.keys(pkg.dependencies ?? {});
+            if (deps.length > 0) { console.error('unexpected runtime deps:', deps); process.exit(1); }
+            console.log('runtime dependencies: none');
+          "
+
+      - name: The correctly configured example comes back clean
+        run: |
+          out=$(node dist/src/cli.js analyse examples/safe-policy.json)
+          echo "$out"
+          echo "$out" | grep -q "No findings." || { echo "expected a clean report"; exit 1; }
+
+      - name: The deliberately vulnerable example is reported
+        run: |
+          set +e
+          out=$(node dist/src/cli.js analyse examples/reflect-with-credentials.json)
+          code=$?
+          echo "$out"
+          [ $code -eq 1 ] || { echo "expected exit 1, got $code"; exit 1; }
+          echo "$out" | grep -q "CRITICAL  CM001" || { echo "CM001 was not reported"; exit 1; }
+          echo "$out" | grep -q "HIGH      CM002" || { echo "CM002 was not reported"; exit 1; }
+          echo "$out" | grep -q "HIGH      CM007" || { echo "CM007 was not reported"; exit 1; }
+
+      - name: The subtly-broken suffix-match example is caught
+        run: |
+          set +e
+          out=$(node dist/src/cli.js analyse examples/suffix-match.json)
+          code=$?
+          [ $code -eq 1 ] || { echo "expected exit 1, got $code"; exit 1; }
+          echo "$out" | grep -q "CRITICAL  CM004" || { echo "CM004 was not reported"; exit 1; }
+          echo "$out" | grep -q "notkestrel-pay.example" || { echo "the accepted host was not named"; exit 1; }
+
+      - name: Wildcard with credentials is graded low, not critical
+        run: |
+          set +e
+          out=$(node dist/src/cli.js analyse examples/wildcard-with-credentials.json --fail-on medium)
+          code=$?
+          [ $code -eq 0 ] || { echo "expected exit 0 at --fail-on medium, got $code"; exit 1; }
+          echo "$out" | grep -q "LOW       CM003" || { echo "CM003 was not graded low"; exit 1; }
+          if echo "$out" | grep -q "CRITICAL"; then echo "nothing here should be critical"; exit 1; fi
+
+      - name: An origin only the pre-flight accepts is not reported as exploitable
+        run: |
+          set +e
+          out=$(node dist/src/cli.js analyse examples/preflight-mismatch.json)
+          echo "$out" | grep -q "MEDIUM    CM012" || { echo "CM012 was not reported"; exit 1; }
+          echo "$out" | grep -q "LOW       CM001" || { echo "CM001 should be graded down here"; exit 1; }
+
+      - name: A HAR capture is accepted
+        run: node dist/src/cli.js analyse examples/browser-capture.har --fail-on never
+
+      - name: Exit codes
+        run: |
+          set +e
+          node dist/src/cli.js analyse examples/safe-policy.json >/dev/null
+          [ $? -eq 0 ] || { echo "expected 0 for a clean capture"; exit 1; }
+          node dist/src/cli.js analyse examples/suffix-match.json >/dev/null
+          [ $? -eq 1 ] || { echo "expected 1 when findings are present"; exit 1; }
+          node dist/src/cli.js analyse examples/suffix-match.json --format yaml >/dev/null 2>&1
+          [ $? -eq 2 ] || { echo "expected 2 for an unknown format"; exit 1; }
+          node dist/src/cli.js badcommand >/dev/null 2>&1
+          [ $? -eq 2 ] || { echo "expected 2 for an unknown command"; exit 1; }
+          node dist/src/cli.js analyse /nonexistent.json >/dev/null 2>&1
+          [ $? -eq 3 ] || { echo "expected 3 for an unreadable input"; exit 1; }
+          node dist/src/cli.js probe not-a-url >/dev/null 2>&1
+          [ $? -eq 3 ] || { echo "expected 3 for an unparseable resource URL"; exit 1; }
+          node dist/src/cli.js --help >/dev/null
+          [ $? -eq 0 ] || { echo "expected 0 for --help"; exit 1; }
+          echo "all exit codes as documented"
+
+      - name: The probe plan and the PoC pages generate
+        run: |
+          node dist/src/cli.js probe https://api.example-target.example/v1/me \
+            -t https://app.example-target.example
+          node dist/src/cli.js poc examples/reflect-with-credentials.json --out-dir /tmp/cors-poc
+          test -f /tmp/cors-poc/cm002-null-origin.html
+          grep -q "AUTHORISED TESTING ONLY" /tmp/cors-poc/cm002-null-origin.html
+
+      - name: Rule table renders in every format
+        run: |
+          node dist/src/cli.js rules >/dev/null
+          node dist/src/cli.js rules --format json | node -e "
+            const data = JSON.parse(require('node:fs').readFileSync(0, 'utf8'));
+            if (data.rules.length !== 16) { console.error('expected 16 rules'); process.exit(1); }
+            console.log('rules in table:', data.rules.length);
+          "
+          node dist/src/cli.js rules --format markdown >/dev/null
