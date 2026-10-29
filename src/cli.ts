@@ -6,18 +6,27 @@
  * above the threshold, 2 bad usage, 3 unreadable or unparseable input.
  */
 
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { analyse } from './analyse.js';
 import { CaptureError, loadCaptures } from './capture.js';
 import { renderAnalysis, renderPlan, renderRules, type Format } from './format.js';
-import { buildPocs } from './poc.js';
+import { buildPocs, type Poc } from './poc.js';
 import { ProbeError, buildProbePlan } from './probe.js';
 import { SEVERITY_ORDER, severityRank, type AnalysisResult, type Severity } from './types.js';
 
-const VERSION = '0.1.0';
+/** Read from the manifest rather than duplicated here, so it cannot drift. */
+const VERSION = ((): string => {
+  try {
+    const raw = readFileSync(new URL('../../package.json', import.meta.url), 'utf8');
+    const parsed = JSON.parse(raw) as { version?: unknown };
+    return typeof parsed.version === 'string' ? parsed.version : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
 
 const EXIT_CLEAN = 0;
 const EXIT_FINDINGS = 1;
@@ -102,14 +111,28 @@ function parseArgs(argv: readonly string[]): Args {
     version: false,
   };
 
+  // A value that begins with a hyphen is rejected, because a missing value is
+  // far more common than a file called -weird.json -- but it has to be
+  // expressible, so everything after `--` is a positional.
   const next = (i: number, flag: string): string => {
     const value = argv[i + 1];
-    if (value === undefined || value.startsWith('-')) throw new UsageError(`${flag} needs a value`);
+    if (value === undefined || value.startsWith('-')) {
+      throw new UsageError(`${flag} needs a value (use \`--\` first if the value begins with a hyphen)`);
+    }
     return value;
   };
 
+  let onlyPositionals = false;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] as string;
+    if (onlyPositionals) {
+      args.positionals.push(arg);
+      continue;
+    }
+    if (arg === '--') {
+      onlyPositionals = true;
+      continue;
+    }
     switch (arg) {
       case '-h':
       case '--help':
@@ -211,6 +234,17 @@ function runProbe(args: Args): number {
   return EXIT_CLEAN;
 }
 
+/** Write each proof-of-concept page into `dir`, returning the paths written. */
+function writePocs(pocs: readonly Poc[], dir: string): string[] {
+  if (pocs.length === 0) return [];
+  mkdirSync(dir, { recursive: true });
+  return pocs.map((poc) => {
+    const target = join(dir, poc.filename);
+    writeFileSync(target, poc.html, 'utf8');
+    return target;
+  });
+}
+
 function runPoc(args: Args): number {
   if (args.positionals.length === 0) throw new UsageError('poc needs at least one capture file');
   const parts: string[] = [];
@@ -222,7 +256,19 @@ function runPoc(args: Args): number {
       const bundle = buildPocs(result);
 
       if (args.format === 'json') {
-        parts.push(JSON.stringify({ tool: 'cors-matrix', resource: result.resource, ...bundle }, null, 2));
+        // --out-dir still writes the pages. This branch used to `continue`
+        // before the write loop, so `written` stayed 0 and the run ended with
+        // "nothing to write; no demonstrable finding" while printing the
+        // demonstrable findings in the JSON directly above it.
+        const files = args.outDir === null ? [] : writePocs(bundle.pocs, args.outDir);
+        written += files.length;
+        parts.push(
+          JSON.stringify(
+            { tool: 'cors-matrix', resource: result.resource, ...bundle, ...(args.outDir === null ? {} : { files }) },
+            null,
+            2,
+          ),
+        );
         continue;
       }
 
@@ -232,9 +278,7 @@ function runPoc(args: Args): number {
       }
       for (const poc of bundle.pocs) {
         if (args.outDir !== null) {
-          mkdirSync(args.outDir, { recursive: true });
-          const target = join(args.outDir, poc.filename);
-          writeFileSync(target, poc.html, 'utf8');
+          const [target] = writePocs([poc], args.outDir);
           written += 1;
           parts.push(`# wrote ${target}  (${poc.rule}, origin ${poc.origin})`);
           parts.push(`# ${poc.servingInstruction}`);

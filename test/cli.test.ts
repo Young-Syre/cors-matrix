@@ -278,3 +278,32 @@ test('rules prints every rule in each format', () => {
   assert.equal(json.rules.length, 16);
   assert.match(cli('rules', '--format', 'markdown').stdout, /\| ID \| Name \| Max severity \|/);
 });
+
+test('poc --format json --out-dir writes the pages it prints', () => {
+  // The JSON branch used to `continue` before the write loop, so the run
+  // printed four PoCs and then said "nothing to write; no demonstrable
+  // finding".
+  const dir = mkdtempSync(join(tmpdir(), 'cors-poc-json-'));
+  const result = cli('poc', join(EXAMPLES, 'reflect-with-credentials.json'), '--format', 'json', '--out-dir', dir);
+  assert.equal(result.status, 0, result.stderr);
+  const written = readdirSync(dir);
+  assert.ok(written.length > 0, 'pages were written');
+  assert.doesNotMatch(result.stdout, /nothing to write/);
+  const parsed = JSON.parse(result.stdout) as { pocs: unknown[]; files: string[] };
+  assert.equal(parsed.files.length, parsed.pocs.length);
+  assert.equal(written.length, parsed.pocs.length);
+});
+
+test('a value beginning with a hyphen is reachable after --', () => {
+  const missing = cli('analyse', '--trusted');
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /needs a value/);
+
+  const ok = cli('analyse', '--', join(EXAMPLES, 'safe-policy.json'));
+  assert.equal(ok.status, 0, ok.stderr);
+});
+
+test('--version matches the manifest', () => {
+  const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version: string };
+  assert.equal(cli('--version').stdout.trim(), manifest.version);
+});
