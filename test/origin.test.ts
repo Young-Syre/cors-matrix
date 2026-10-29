@@ -92,10 +92,23 @@ test('backslashes are treated as slashes for a special scheme', () => {
   assert.equal(tuple('https:\\\\app.acme.example').host, 'app.acme.example');
 });
 
-test('a trailing root dot is preserved, so it is a distinct host', () => {
+test('a trailing root dot is the same host, and still reported as non-canonical', () => {
+  // The same host in DNS. Treating it as a different one made the defender's
+  // own host read as a prefix of itself, which hostRelationTo reported as
+  // prefix validation -- critical, against a host the defender controls.
   const dotted = tuple('https://app.acme.example.');
-  assert.equal(dotted.host, 'app.acme.example.');
-  assert.equal(sameOrigin(dotted, tuple('https://app.acme.example')), false);
+  assert.equal(dotted.host, 'app.acme.example');
+  assert.equal(dotted.serialized, 'https://app.acme.example');
+  assert.equal(sameOrigin(dotted, tuple('https://app.acme.example')), true);
+  assert.equal(dotted.canonical, false, 'the divergence is still reported');
+  assert.equal(dotted.raw, 'https://app.acme.example.', 'the wire value is kept');
+});
+
+test('a port survives the trailing-dot strip', () => {
+  const dotted = tuple('https://app.acme.example.:8443');
+  assert.equal(dotted.host, 'app.acme.example');
+  assert.equal(dotted.port, 8443);
+  assert.equal(dotted.serialized, 'https://app.acme.example:8443');
 });
 
 test('userinfo, a query string, a fragment and a path are all rejected', () => {

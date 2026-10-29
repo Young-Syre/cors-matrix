@@ -72,8 +72,13 @@ export function readCorsResponseHeaders(headers: HeaderMap): CorsResponseHeaders
     acao: readAcao(headers),
     acacRaw,
     // The Fetch standard's CORS check compares this header against the byte
-    // string `true`. `True` and `TRUE` are therefore not honoured.
-    acacHonoured: acacRaw === 'true',
+    // string `true`. `True` and `TRUE` are therefore not honoured -- and
+    // neither is a response that sends the header twice, which Fetch combines
+    // into `true, false`. readAcao already handles that case for ACAO; this
+    // read used `get`, which is `all(name)[0]`, so it honoured the first value
+    // and graded on a credentialed read the browser would refuse.
+    acacHonoured:
+      headers.all('access-control-allow-credentials').length === 1 && acacRaw === 'true',
     allowMethods: headers.list('access-control-allow-methods'),
     allowHeaders: headers.list('access-control-allow-headers'),
     exposeHeaders: headers.list('access-control-expose-headers'),
@@ -90,7 +95,10 @@ export function varyCoversOrigin(vary: readonly string[] | null): boolean {
 }
 
 /**
- * The CORS check from the Fetch standard, step for step.
+ * The CORS check from the Fetch standard, step for step -- plus the header
+ * extraction the steps assume has already succeeded, which is the
+ * `acao.multiple` test below: a response sending the header twice, or once
+ * comma-joined, has no single value for step 1 to take.
  *
  *   1. Let origin be ACAO. If absent, return failure.
  *   2. If credentials mode is not "include" and origin is `*`, return success.
@@ -118,16 +126,26 @@ export function corsCheck(
   return acacHonoured;
 }
 
-/** Step 3 of the CORS check: ACAO equals the serialised request origin. */
+/**
+ * Step 3 of the CORS check: ACAO equals the serialised request origin.
+ *
+ * A byte comparison, as the standard says, on the values as they appeared on
+ * the wire. Comparing parsed triples instead was wrong in the direction that
+ * invents a finding: `Access-Control-Allow-Origin: https://evil.invalid:443`
+ * parses to the same triple as `https://evil.invalid` and was graded CM001
+ * critical, while CM015 in the same report said the endpoint was closed by
+ * accident. A browser agrees with CM015 -- it rejects the response and the
+ * generated proof-of-concept page could not have worked.
+ *
+ * This is also why the equality is on `raw` rather than `serialized`: a page
+ * served from `https://app.acme.example.` sends that trailing dot in Origin,
+ * and a server echoing it back byte for byte does pass the check.
+ */
 function originsMatch(acao: OriginValue, requestOrigin: OriginValue | null): boolean {
   if (requestOrigin === null) return false;
   if (acao.kind === 'null' && requestOrigin.kind === 'null') return true;
   if (acao.kind === 'origin' && requestOrigin.kind === 'origin') {
-    // A byte comparison in the spec, but the browser-serialised request origin
-    // is already canonical, so comparing parsed triples is equivalent and does
-    // not punish a server that answered with a non-canonical but equivalent
-    // value. CM015 reports the non-canonical value separately.
-    return sameOrigin(acao, requestOrigin);
+    return acao.raw === requestOrigin.raw;
   }
   return false;
 }

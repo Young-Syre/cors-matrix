@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { ProbeError, buildProbePlan, probeCommandHint } from '../src/probe.js';
+import { severityRank } from '../src/types.js';
+import { APP_ORIGIN, RESOURCE, echo, run } from './helpers.js';
 
 const PLAN = buildProbePlan({
   resource: 'https://api.acme-widgets.example/v1/me',
@@ -149,4 +151,35 @@ test('the notes warn about credentials, Vary and authorisation', () => {
   assert.match(notes, /once with the session cookie/);
   assert.match(notes, /Vary/);
   assert.match(notes, /authorised to test/);
+});
+
+test('the plan\'s own trailing-dot probe does not become a finding', () => {
+  // probe.ts generates this probe and says in the same file that the host it
+  // names is one the defender already controls -- "a fingerprint rather than a
+  // primitive". analyse.ts graded it CM005 critical. A passing test sat on
+  // each side of that contradiction and none crossed it; this one does.
+  const plan = buildProbePlan({ resource: RESOURCE, trustedOrigins: [APP_ORIGIN] });
+  const dotted = plan.probes.find((probe) => probe.origin === `${APP_ORIGIN}.`);
+  assert.notEqual(dotted, undefined, 'the plan still emits a trailing-dot probe');
+
+  // Vary: Origin on both, so the only thing left to grade is whether echoing
+  // the defender's own host back with a root dot is an origin-validation flaw.
+  const result = run([
+    echo(APP_ORIGIN, { vary: 'Origin' }),
+    echo(`${APP_ORIGIN}.`, { vary: 'Origin' }),
+  ]);
+  const serious = result.findings.filter(
+    (finding) => severityRank(finding.severity) > severityRank('low'),
+  );
+  assert.deepEqual(
+    serious.map((finding) => `${finding.rule} ${finding.severity}`),
+    [],
+    'echoing back the defender\'s own host with a root dot is not an origin-validation flaw',
+  );
+  // The non-canonical value is still reported, which is the point: the fact is
+  // worth knowing, the critical grade was not.
+  assert.ok(
+    result.findings.some((finding) => finding.rule === 'CM015'),
+    'the trailing dot is still reported as a non-canonical value',
+  );
 });

@@ -142,12 +142,40 @@ test('a duplicated ACAO fails the check outright', () => {
   assert.equal(corsCheck(twice, false, EVIL, 'omit'), false);
 });
 
-test('a non-canonical ACAO still matches an equivalent request origin', () => {
-  // The browser-serialised request origin is always canonical, so comparing
-  // parsed triples is equivalent to the spec's byte comparison without
-  // punishing a server that answered :443 explicitly. CM015 reports the shape.
-  const explicitPort = readAcao(new HeaderMap({ 'access-control-allow-origin': 'https://probe.example:443' }));
-  assert.equal(corsCheck(explicitPort, true, EVIL, 'include'), true);
+test('a non-canonical ACAO fails the check, because step 3 is a byte comparison', () => {
+  // The old comment here had it exactly backwards: *because* the serialised
+  // request origin is always canonical, a non-canonical ACAO cannot equal it.
+  // A browser rejects these responses, so grading them as an accepted origin
+  // invented a critical finding and emitted a PoC page that could not work.
+  for (const value of [
+    'https://probe.example:443',
+    'https://probe.example/',
+    'HTTPS://probe.example',
+  ]) {
+    const acao = readAcao(new HeaderMap({ 'access-control-allow-origin': value }));
+    assert.equal(corsCheck(acao, true, EVIL, 'include'), false, value);
+    assert.equal(corsCheck(acao, false, EVIL, 'omit'), false, value);
+  }
+});
+
+test('a trailing root dot echoed back byte for byte does match', () => {
+  // A page served from app.acme.example. sends that dot in Origin, so a server
+  // echoing it is passing the check the browser actually runs.
+  const dotted = parseOriginValue('https://app.acme.example.');
+  const acao = readAcao(new HeaderMap({ 'access-control-allow-origin': 'https://app.acme.example.' }));
+  assert.equal(corsCheck(acao, true, dotted, 'include'), true);
+});
+
+test('ACAC sent twice is not honoured', () => {
+  // Fetch combines duplicate headers into `true, false`, which is not the byte
+  // string `true`. Reading only the first value graded a credentialed read the
+  // browser would refuse.
+  const headers = new HeaderMap({ 'access-control-allow-origin': 'https://probe.example' });
+  headers.append('access-control-allow-credentials', 'true');
+  headers.append('access-control-allow-credentials', 'false');
+  const read = readCorsResponseHeaders(headers);
+  assert.equal(read.acacHonoured, false);
+  assert.equal(corsCheck(read.acao, read.acacHonoured, EVIL, 'include'), false);
 });
 
 test('acaoShapeOf names what the server did', () => {

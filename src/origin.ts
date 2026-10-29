@@ -109,14 +109,22 @@ export function parseOriginValue(raw: string): OriginValue {
   }
 
   const port = url.port === '' ? null : Number(url.port);
-  // `url.host` already carries the port only when it is non-default, which is
-  // exactly the canonical origin serialisation.
-  const serialized = `${scheme}://${url.host}`;
+  // One trailing root dot is stripped from the host. `app.acme.example.` and
+  // `app.acme.example` are the same host in DNS, and treating them as
+  // different ones made the defender's own host read as a *prefix* of itself:
+  // hostRelationTo saw `app.acme.example.`.startsWith('app.acme.example.')
+  // and reported prefix validation, critical, against a host the defender
+  // already controls -- which is exactly what probe.ts says this probe is not.
+  //
+  // The divergence is not lost: `raw` keeps the dot, `serialized` does not,
+  // so `canonical` is false and CM015 still reports it.
+  const host = url.hostname.replace(/\.$/, '');
+  const serialized = `${scheme}://${host}${url.port === '' ? '' : `:${url.port}`}`;
 
   return {
     kind: 'origin',
     scheme,
-    host: url.hostname,
+    host,
     port,
     serialized,
     raw,
